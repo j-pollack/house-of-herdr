@@ -13,8 +13,9 @@ import {
   type Subscription,
 } from "./herdr.js";
 import fs from "node:fs";
-import { Controls, type DialMode } from "./controls.js";
+import { Controls } from "./controls.js";
 import { ControlServer, type SlotStatus } from "./control.js";
+import { DEFAULT_DIAL_MODE_ORDER, type DialMode } from "./dial.js";
 import {
   RING_AGENTS,
   RING_OFF,
@@ -78,6 +79,7 @@ class Daemon {
   private herdr = new HerdrClient();
   private policy: Policy = "sticky";
   private scrollSteps = 1;
+  private dialModeOrder: DialMode[] = [...DEFAULT_DIAL_MODE_ORDER];
   private bindings: Bindings = defaultBindings();
   private configError: string | null = null;
   private configWatcher: fs.FSWatcher | null = null;
@@ -129,6 +131,7 @@ class Daemon {
     {
       bindings: () => this.bindings,
       scrollSteps: () => this.scrollSteps,
+      dialModeOrder: () => this.dialModeOrder,
       slotPaneId: (slot) => this.agentForSlot(slot)?.pane_id ?? null,
       togglePopup: () => void this.togglePopup(),
       togglePolicy: () => this.togglePolicy(),
@@ -142,6 +145,7 @@ class Daemon {
       policy: this.policy,
       scrollSteps: this.scrollSteps,
       dialMode: this.controls.dialMode,
+      dialModeOrder: this.dialModeOrder,
       state: this.yielded ? "yielded" : this.device.state,
       herdrConnected: this.herdrReached && this.herdrLostAt === null,
       configError: this.configError,
@@ -180,8 +184,10 @@ class Daemon {
       const policyChanged = config.policy !== this.policy;
       this.policy = config.policy;
       this.scrollSteps = config.scrollSteps;
+      this.dialModeOrder = config.dialModeOrder;
       this.bindings = config.bindings;
       this.configError = null;
+      if (initial) this.controls.resetDialMode();
       // A mode nothing can toggle anymore must not linger: without any
       // dial-mode binding, collapse back to workspace mode.
       const hasDialMode = [
@@ -192,7 +198,7 @@ class Daemon {
           binding?.kind === "preset" && binding.preset === "dial-mode",
       );
       if (!hasDialMode && this.controls.dialMode !== "workspaces") {
-        this.controls.resetDialMode();
+        this.controls.resetDialMode("workspaces");
         this.pushRing();
       }
       if (!initial) {

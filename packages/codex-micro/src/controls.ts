@@ -16,6 +16,7 @@ import type { KeyCombo } from "./keys.js";
 import { HerdrScroller, type ScrollController } from "./scroll.js";
 import { comparePriority } from "./slots.js";
 import type { AgentInfo, HerdrClient } from "./herdr.js";
+import type { DialMode } from "./dial.js";
 
 const DIAL_PRESET_MIN_INTERVAL_MS = 120;
 // Sweep model: the first sector entered past ENGAGE fires, and every sector
@@ -28,9 +29,7 @@ const RELEASE_DISTANCE = 0.3;
 // 0.75. No dead wedges: every deflection resolves to the nearest direction.
 const SECTOR_DIRECTIONS: JoystickDirection[] = ["right", "down", "left", "up"];
 
-export type DialMode = "workspaces" | "agents" | "scroll";
-
-const DIAL_MODES: readonly DialMode[] = ["scroll", "workspaces", "agents"];
+export type { DialMode } from "./dial.js";
 
 const comboId = (combo: KeyCombo) => `${combo.keyCode}:${combo.modifiers}`;
 
@@ -43,6 +42,7 @@ function cycle<T>(items: T[], current: number, step: 1 | -1): T | undefined {
 export interface ControlDeps {
   bindings(): Bindings;
   scrollSteps(): number;
+  dialModeOrder(): readonly DialMode[];
   slotPaneId(slot: number): string | null;
   togglePopup(): void;
   togglePolicy(): void;
@@ -60,7 +60,7 @@ export class Controls {
   // Refcount per combo, so two inputs holding the same key post one down on
   // the first and one up on the last, rather than releasing on the first.
   private holds = new Map<string, { combo: KeyCombo; count: number }>();
-  dialMode: DialMode = "scroll";
+  dialMode: DialMode;
 
   constructor(
     private herdr: HerdrClient,
@@ -71,7 +71,9 @@ export class Controls {
       log,
       deps.scrollSteps,
     ),
-  ) {}
+  ) {
+    this.dialMode = deps.dialModeOrder()[0]!;
+  }
 
   // The HID callbacks run straight off the device stream, so a synchronous
   // throw here would take the daemon down with it.
@@ -102,9 +104,9 @@ export class Controls {
     this.scroller.stop();
   }
 
-  resetDialMode(): void {
+  resetDialMode(mode: DialMode = this.deps.dialModeOrder()[0]!): void {
     this.scroller.stop();
-    this.dialMode = "workspaces";
+    this.dialMode = mode;
   }
 
   private dispatchHid(key: string, act: number): void {
@@ -290,11 +292,8 @@ export class Controls {
         break;
       case "dial-mode":
         if (this.dialMode === "scroll") this.scroller.stop();
-        this.dialMode = cycle(
-          [...DIAL_MODES],
-          DIAL_MODES.indexOf(this.dialMode),
-          1,
-        )!;
+        const order = this.deps.dialModeOrder();
+        this.dialMode = cycle([...order], order.indexOf(this.dialMode), 1)!;
         this.deps.onDialModeChange(this.dialMode);
         break;
       default: {

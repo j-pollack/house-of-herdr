@@ -31,6 +31,7 @@ describe("loadConfig", () => {
     const config = loadConfig();
     expect(config.policy).toBe("sticky");
     expect(config.scrollSteps).toBe(1);
+    expect(config.dialModeOrder).toEqual(["workspaces", "agents", "scroll"]);
     expect(config.bindings.buttons.ACT06).toEqual({
       kind: "preset",
       preset: "popup",
@@ -42,12 +43,14 @@ describe("loadConfig", () => {
       JSON.stringify({
         policy: "mirror",
         scroll_steps: 3,
+        dial_mode_order: ["scroll", "workspaces", "agents"],
         bindings: { ACT10: "zoom" },
       }),
     );
     const config = loadConfig();
     expect(config.policy).toBe("mirror");
     expect(config.scrollSteps).toBe(3);
+    expect(config.dialModeOrder).toEqual(["scroll", "workspaces", "agents"]);
     expect(config.bindings.buttons.ACT10).toEqual({
       kind: "preset",
       preset: "zoom",
@@ -76,6 +79,20 @@ describe("loadConfig", () => {
       write(JSON.stringify({ scroll_steps: value }));
       expect(() => loadConfig()).toThrow(
         /scroll_steps: expected an integer from 1 to 12/,
+      );
+    }
+  });
+
+  it("rejects an invalid dial mode order", () => {
+    for (const value of [
+      "scroll-first",
+      ["scroll", "workspaces"],
+      ["scroll", "scroll", "agents"],
+      ["scroll", "workspaces", "volume"],
+    ]) {
+      write(JSON.stringify({ dial_mode_order: value }));
+      expect(() => loadConfig()).toThrow(
+        /dial_mode_order: expected each of workspaces, agents, scroll exactly once/,
       );
     }
   });

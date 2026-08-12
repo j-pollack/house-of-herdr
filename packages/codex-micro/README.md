@@ -56,7 +56,7 @@ after an automatic start, launch it once from your terminal
 | Agent Keys 1-6 | Focus the assigned Herdr agent (marks done agents seen)   |
 | Joystick       | Move pane focus; circle the stick to keep moving          |
 | Dial rotate    | Cycle workspaces, or agents in agent mode                 |
-| Dial click     | Cycle the dial through scroll, workspaces, and agents     |
+| Dial click     | Cycle through the configured dial modes                   |
 | ACT06          | Toggle the key-map popup                                  |
 | ACT07          | Send Escape to Herdr's focused pane (interrupt the agent) |
 | ACT08 / ACT09  | Previous / next tab                                       |
@@ -68,14 +68,16 @@ ask your agent to read [CONFIGURING.md](CONFIGURING.md) to customize keys or
 create a configuration for any mapping you want. Config edits apply
 instantly, no restart.
 
-The dial starts in scroll mode with its ring off. Workspace mode is blue and
-agent mode is purple. In scroll mode, turn counter-clockwise to scroll up and
-clockwise to scroll down. When Ghostty/Herdr is frontmost it targets Herdr's
-keyboard-focused pane regardless of pointer position; in other apps it scrolls
-beneath the pointer like a normal wheel. Set `scroll_steps` from 1 to 12 in the
-plugin config to tune how much each detent moves; changes apply live. The
-`system-scroll-up` and `system-scroll-down` presets can instead make the dial
-an always-on system wheel without modes; see
+The default order is workspaces, agents, then scroll; set `dial_mode_order` to
+change both the startup mode and click order. The ring is off in scroll mode,
+blue in workspace mode, and purple in agent mode. In scroll mode, turn
+counter-clockwise to scroll up and clockwise to scroll down. When
+Ghostty/Herdr is frontmost it targets Herdr's keyboard-focused pane regardless
+of pointer position; in other apps it scrolls beneath the pointer like a normal
+wheel. Set `scroll_steps` from 1 to 12 in the plugin config to tune how much
+each detent moves; changes apply live. The `system-scroll-up` and
+`system-scroll-down` presets can instead make the dial an always-on system
+wheel without modes; see
 [CONFIGURING.md](CONFIGURING.md).
 
 Bindings come in two flavors. **Herdr-side** bindings (the presets plus
