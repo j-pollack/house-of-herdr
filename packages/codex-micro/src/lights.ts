@@ -4,13 +4,21 @@ import { SLOT_COUNT, type AgentStatus } from "./slots.js";
 
 const EFFECT = { off: 0, solid: 1, breath: 4 } as const;
 
-// The ambient ring doubles as the dial-mode indicator: blue in agent mode.
-export const RING_AGENTS: LightingSide = {
+// The ambient ring doubles as the dial-mode indicator: scroll is the quiet
+// default (off), workspaces are blue, and agents are purple.
+export const RING_WORKSPACES: LightingSide = {
   e: 1,
   b: 0.5,
   s: 0,
   m: 0,
   c: 0x2277ff,
+};
+export const RING_AGENTS: LightingSide = {
+  e: 1,
+  b: 0.5,
+  s: 0,
+  m: 0,
+  c: 0xaa55ff,
 };
 export const RING_OFF: LightingSide = { e: 0, b: 0, s: 0, m: 0, c: 0 };
 

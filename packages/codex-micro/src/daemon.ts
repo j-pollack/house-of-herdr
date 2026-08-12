@@ -15,7 +15,12 @@ import {
 import fs from "node:fs";
 import { Controls, type DialMode } from "./controls.js";
 import { ControlServer, type SlotStatus } from "./control.js";
-import { RING_AGENTS, RING_OFF, slotLighting } from "./lights.js";
+import {
+  RING_AGENTS,
+  RING_OFF,
+  RING_WORKSPACES,
+  slotLighting,
+} from "./lights.js";
 import {
   assignSlots,
   SLOT_COUNT,
@@ -72,6 +77,7 @@ function atMost(work: Promise<unknown>, ms: number): Promise<unknown> {
 class Daemon {
   private herdr = new HerdrClient();
   private policy: Policy = "sticky";
+  private scrollSteps = 1;
   private bindings: Bindings = defaultBindings();
   private configError: string | null = null;
   private configWatcher: fs.FSWatcher | null = null;
@@ -122,6 +128,7 @@ class Daemon {
     this.herdr,
     {
       bindings: () => this.bindings,
+      scrollSteps: () => this.scrollSteps,
       slotPaneId: (slot) => this.agentForSlot(slot)?.pane_id ?? null,
       togglePopup: () => void this.togglePopup(),
       togglePolicy: () => this.togglePolicy(),
@@ -133,6 +140,7 @@ class Daemon {
   private control = new ControlServer({
     status: () => ({
       policy: this.policy,
+      scrollSteps: this.scrollSteps,
       dialMode: this.controls.dialMode,
       state: this.yielded ? "yielded" : this.device.state,
       herdrConnected: this.herdrReached && this.herdrLostAt === null,
@@ -171,10 +179,11 @@ class Daemon {
       const config = loadConfig();
       const policyChanged = config.policy !== this.policy;
       this.policy = config.policy;
+      this.scrollSteps = config.scrollSteps;
       this.bindings = config.bindings;
       this.configError = null;
       // A mode nothing can toggle anymore must not linger: without any
-      // dial-mode binding, collapse back to workspace mode (ring off).
+      // dial-mode binding, collapse back to workspace mode.
       const hasDialMode = [
         ...Object.values(this.bindings.buttons),
         ...Object.values(this.bindings.joystick),
@@ -182,8 +191,8 @@ class Daemon {
         (binding) =>
           binding?.kind === "preset" && binding.preset === "dial-mode",
       );
-      if (!hasDialMode && this.controls.dialMode === "agents") {
-        this.controls.dialMode = "workspaces";
+      if (!hasDialMode && this.controls.dialMode !== "workspaces") {
+        this.controls.resetDialMode();
         this.pushRing();
       }
       if (!initial) {
@@ -249,10 +258,14 @@ class Daemon {
 
   private pushRing(): void {
     if (!this.device.connected || this.yielded || this.stopping) return;
+    const lighting =
+      this.controls.dialMode === "agents"
+        ? RING_AGENTS
+        : this.controls.dialMode === "workspaces"
+          ? RING_WORKSPACES
+          : RING_OFF;
     this.device
-      .setAmbientLighting(
-        this.controls.dialMode === "agents" ? RING_AGENTS : RING_OFF,
-      )
+      .setAmbientLighting(lighting)
       .catch((error: Error) => log(`ring update failed: ${error.message}`));
   }
 

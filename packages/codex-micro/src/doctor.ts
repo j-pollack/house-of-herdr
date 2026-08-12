@@ -102,7 +102,7 @@ async function checkDevice(): Promise<void> {
   );
 }
 
-// Accessibility (only needed for `key` bindings).
+// Accessibility (needed for global key and scroll event synthesis).
 const tapkey = fileURLToPath(new URL("../bin/tapkey", import.meta.url));
 const axGranted = await new Promise<boolean>((resolve) => {
   const child = spawn(tapkey, ["0", "check"], { stdio: "ignore" });
@@ -113,6 +113,6 @@ check(
   "accessibility",
   axGranted,
   axGranted
-    ? 'granted (needed only for {"key": ...} bindings)'
-    : 'not granted; needed only for {"key": ...} bindings (System Settings → Privacy & Security → Accessibility)',
+    ? "granted (used for global key bindings and scrolling)"
+    : "not granted; needed for global key bindings and scrolling (System Settings → Privacy & Security → Accessibility)",
 );

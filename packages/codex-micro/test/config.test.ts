@@ -30,6 +30,7 @@ describe("loadConfig", () => {
   it("returns defaults when no config exists yet", () => {
     const config = loadConfig();
     expect(config.policy).toBe("sticky");
+    expect(config.scrollSteps).toBe(1);
     expect(config.bindings.buttons.ACT06).toEqual({
       kind: "preset",
       preset: "popup",
@@ -37,9 +38,16 @@ describe("loadConfig", () => {
   });
 
   it("reads a valid config", () => {
-    write(JSON.stringify({ policy: "mirror", bindings: { ACT10: "zoom" } }));
+    write(
+      JSON.stringify({
+        policy: "mirror",
+        scroll_steps: 3,
+        bindings: { ACT10: "zoom" },
+      }),
+    );
     const config = loadConfig();
     expect(config.policy).toBe("mirror");
+    expect(config.scrollSteps).toBe(3);
     expect(config.bindings.buttons.ACT10).toEqual({
       kind: "preset",
       preset: "zoom",
@@ -61,6 +69,15 @@ describe("loadConfig", () => {
   it("rejects an unknown policy rather than coercing it", () => {
     write(JSON.stringify({ policy: "banana" }));
     expect(() => loadConfig()).toThrow(/policy: expected "sticky" or "mirror"/);
+  });
+
+  it("rejects an invalid scroll step count", () => {
+    for (const value of [0, 13, 1.5, "3"]) {
+      write(JSON.stringify({ scroll_steps: value }));
+      expect(() => loadConfig()).toThrow(
+        /scroll_steps: expected an integer from 1 to 12/,
+      );
+    }
   });
 });
 

@@ -28,6 +28,7 @@ export const LOG_FILE = path.join(stateDir, "daemon.log");
 
 export interface Config {
   policy: Policy;
+  scrollSteps: number;
   bindings: Bindings;
 }
 
@@ -39,6 +40,7 @@ export function loadConfig(): Config {
   const raw = readRawConfig();
   return {
     policy: resolvePolicy(raw.policy),
+    scrollSteps: resolveScrollSteps(raw.scroll_steps),
     bindings: resolveBindings(raw.bindings),
   };
 }
@@ -69,6 +71,20 @@ function resolvePolicy(value: unknown): Policy {
   if (value === "sticky" || value === "mirror") return value;
   throw new Error(
     `policy: expected "sticky" or "mirror", got ${JSON.stringify(value)}`,
+  );
+}
+
+function resolveScrollSteps(value: unknown): number {
+  if (value === undefined) return 1;
+  if (
+    Number.isInteger(value) &&
+    (value as number) >= 1 &&
+    (value as number) <= 12
+  ) {
+    return value as number;
+  }
+  throw new Error(
+    `scroll_steps: expected an integer from 1 to 12, got ${JSON.stringify(value)}`,
   );
 }
 

@@ -17,6 +17,8 @@ const PRESETS = [
   "agent-next",
   "agent-prev",
   "toggle-policy",
+  "system-scroll-up",
+  "system-scroll-down",
   "dial-next",
   "dial-prev",
   "dial-mode",

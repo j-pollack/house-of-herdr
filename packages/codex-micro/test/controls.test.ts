@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Dispatch must be exercised without driving the real keyboard.
-const { posted } = vi.hoisted(() => ({ posted: [] as string[] }));
+const { posted, systemScrolled } = vi.hoisted(() => ({
+  posted: [] as string[],
+  systemScrolled: [] as number[],
+}));
 vi.mock("../src/tapkey.js", () => ({
   postKey: (combo: { keyCode: number; modifiers: number }, mode: string) =>
     posted.push(`${combo.keyCode}:${combo.modifiers} ${mode}`),
+  postScroll: vi.fn(),
+  postSystemScroll: (lines: number) => systemScrolled.push(lines),
 }));
 
 const { Controls } = await import("../src/controls.js");
@@ -17,20 +22,26 @@ function setup(initial: Bindings = defaultBindings()) {
   const herdr: HerdrStub = { request: vi.fn(async () => ({})) };
   const deps = {
     bindings: () => bindings,
+    scrollSteps: () => 1,
     slotPaneId: (slot: number) => `pane-${slot}`,
     togglePopup: vi.fn(),
     togglePolicy: vi.fn(),
     onDialModeChange: vi.fn(),
   };
+  const scroller = { scroll: vi.fn(), stop: vi.fn() };
   const logs: string[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const controls = new Controls(herdr as any, deps, (message) =>
-    logs.push(message),
+  const controls = new Controls(
+    herdr as any,
+    deps,
+    (message) => logs.push(message),
+    scroller,
   );
   return {
     controls,
     herdr,
     deps,
+    scroller,
     logs,
     reload: (next: Bindings) => {
       bindings = next;
@@ -40,6 +51,7 @@ function setup(initial: Bindings = defaultBindings()) {
 
 beforeEach(() => {
   posted.length = 0;
+  systemScrolled.length = 0;
 });
 
 describe("hold bindings", () => {
@@ -123,6 +135,66 @@ describe("tap bindings", () => {
     controls.onHid("ENC_CW", 2);
     controls.onHid("ENC_CW", 2);
     expect(posted).toEqual(["105:0 tap", "105:0 tap"]);
+  });
+});
+
+describe("dial modes", () => {
+  it("can behave as an always-on system wheel without rate limiting", () => {
+    const { controls } = setup(
+      resolveBindings({
+        ENC_CW: "system-scroll-up",
+        ENC_CC: "system-scroll-down",
+        ENC_CLK: "none",
+      }),
+    );
+
+    controls.onHid("ENC_CW", 2);
+    controls.onHid("ENC_CW", 2);
+    controls.onHid("ENC_CC", 2);
+    controls.onHid("ENC_CLK", 1);
+
+    expect(systemScrolled).toEqual([1, 1, -1]);
+    expect(controls.dialMode).toBe("scroll");
+  });
+
+  it("starts in scroll and cycles through workspaces and agents", () => {
+    const { controls, deps } = setup();
+
+    controls.onHid("ENC_CLK", 1);
+    controls.onHid("ENC_CLK", 0);
+    controls.onHid("ENC_CLK", 1);
+    controls.onHid("ENC_CLK", 0);
+    controls.onHid("ENC_CLK", 1);
+
+    expect(deps.onDialModeChange.mock.calls.map(([mode]) => mode)).toEqual([
+      "workspaces",
+      "agents",
+      "scroll",
+    ]);
+    expect(controls.dialMode).toBe("scroll");
+  });
+
+  it("uses focus-aware scrolling without rate limiting in scroll mode", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    try {
+      const { controls, scroller } = setup();
+
+      controls.onHid("ENC_CW", 2);
+      controls.onHid("ENC_CW", 2);
+      controls.onHid("ENC_CC", 2);
+
+      expect(scroller.scroll.mock.calls).toEqual([["up"], ["up"], ["down"]]);
+      expect(systemScrolled).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("releases the harness scroll controller when leaving scroll mode", () => {
+    const { controls, scroller } = setup();
+    controls.onHid("ENC_CLK", 1); // scroll -> workspaces
+    expect(scroller.stop).toHaveBeenCalledTimes(1);
   });
 });
 
