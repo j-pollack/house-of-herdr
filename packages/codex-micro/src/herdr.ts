@@ -58,9 +58,44 @@ export interface TabInfo {
 
 export interface PaneInfo {
   pane_id: string;
+  tab_id?: string;
+  agent?: string;
   label?: string;
   cwd?: string;
   foreground_cwd?: string;
+  scroll?: {
+    max_offset_from_bottom: number;
+    offset_from_bottom: number;
+    viewport_rows: number;
+  } | null;
+}
+
+export interface PaneLayoutRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PaneLayoutInfo {
+  workspace_id: string;
+  tab_id: string;
+  focused_pane_id: string;
+  zoomed: boolean;
+  area: PaneLayoutRect;
+  panes: {
+    pane_id: string;
+    focused: boolean;
+    rect: PaneLayoutRect;
+  }[];
+}
+
+export interface SessionSnapshot {
+  focused_pane_id?: string | null;
+  focused_tab_id?: string | null;
+  focused_workspace_id?: string | null;
+  panes: PaneInfo[];
+  layouts: PaneLayoutInfo[];
 }
 
 export type Subscription = { type: string } & Record<string, unknown>;
@@ -118,6 +153,11 @@ export class HerdrClient {
   async paneList(): Promise<PaneInfo[]> {
     const result = await this.request("pane.list");
     return (result.panes ?? []) as PaneInfo[];
+  }
+
+  async sessionSnapshot(): Promise<SessionSnapshot> {
+    const result = await this.request("session.snapshot");
+    return (result.snapshot ?? { panes: [], layouts: [] }) as SessionSnapshot;
   }
 }
 
