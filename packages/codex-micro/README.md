@@ -73,11 +73,13 @@ change both the startup mode and click order. The ring is off in scroll mode,
 blue in workspace mode, and purple in agent mode. In scroll mode, turn
 counter-clockwise to scroll up and clockwise to scroll down. When
 Ghostty/Herdr is frontmost it targets Herdr's keyboard-focused pane regardless
-of pointer position; in other apps it scrolls beneath the pointer like a normal
-wheel. Set `scroll_steps` from 1 to 12 in the plugin config to tune how much
-each detent moves; changes apply live. The `system-scroll-up` and
-`system-scroll-down` presets can instead make the dial an always-on system
-wheel without modes; see
+of its initial pointer position; Ghostty requires moving the pointer to that
+pane before it will route the wheel gesture there. In other apps it scrolls
+beneath the pointer like a normal wheel. Set `scroll_steps` from 1 to 12 in the
+plugin config to tune how much each detent moves; changes apply live. Reversing
+the dial cancels any scroll ticks still buffered in the previous direction
+before scrolling back. The `system-scroll-up` and `system-scroll-down` presets
+can instead make the dial an always-on system wheel without modes; see
 [CONFIGURING.md](CONFIGURING.md).
 
 Bindings come in two flavors. **Herdr-side** bindings (the presets plus

@@ -8,6 +8,11 @@ import type { KeyCombo } from "./keys.js";
 
 export type KeyMode = "tap" | "down" | "up";
 
+export interface ScrollOperation {
+  cancel(): void;
+  done: Promise<void>;
+}
+
 export function postKey(
   combo: KeyCombo,
   mode: KeyMode,
@@ -36,8 +41,7 @@ export function postScroll(
   yFraction: number,
   windowOwner: string,
   log: (message: string) => void,
-): void {
-  const helper = fileURLToPath(new URL("../bin/tapkey", import.meta.url));
+): ScrollOperation {
   const args = [
     "scroll",
     String(lines),
@@ -45,16 +49,11 @@ export function postScroll(
     String(yFraction),
     windowOwner,
   ];
-  const child = spawn(helper, args, { stdio: ["ignore", "ignore", "pipe"] });
-  let stderr = "";
-  child.stderr.on("data", (data: Buffer) => (stderr += data.toString("utf8")));
-  child.on("close", (status) => {
-    if (status !== 0) {
-      log(`scroll ${lines} failed: ${stderr.trim()}`);
-    }
-  });
-  child.on("error", (error: Error) =>
-    log(`tapkey scroll spawn failed: ${error.message}`),
+  return spawnScroll(
+    args,
+    `scroll ${lines} failed`,
+    "tapkey scroll spawn failed",
+    log,
   );
 }
 
@@ -63,19 +62,55 @@ export function postScroll(
 export function postSystemScroll(
   lines: number,
   log: (message: string) => void,
-): void {
+): ScrollOperation {
+  return spawnScroll(
+    ["scroll", String(lines)],
+    `system scroll ${lines} failed`,
+    "tapkey system scroll spawn failed",
+    log,
+  );
+}
+
+function spawnScroll(
+  args: string[],
+  closeFailure: string,
+  spawnFailure: string,
+  log: (message: string) => void,
+): ScrollOperation {
   const helper = fileURLToPath(new URL("../bin/tapkey", import.meta.url));
-  const child = spawn(helper, ["scroll", String(lines)], {
+  const child = spawn(helper, args, {
     stdio: ["ignore", "ignore", "pipe"],
   });
   let stderr = "";
+  let cancelled = false;
+  let settled = false;
+  let resolveDone!: () => void;
+  const done = new Promise<void>((resolve) => (resolveDone = resolve));
+  const finish = (message?: string): void => {
+    if (settled) return;
+    settled = true;
+    if (!cancelled && message) log(message);
+    resolveDone();
+  };
+
   child.stderr.on("data", (data: Buffer) => (stderr += data.toString("utf8")));
   child.on("close", (status) => {
     if (status !== 0) {
-      log(`system scroll ${lines} failed: ${stderr.trim()}`);
+      finish(`${closeFailure}: ${stderr.trim()}`);
+    } else {
+      finish();
     }
   });
   child.on("error", (error: Error) =>
-    log(`tapkey system scroll spawn failed: ${error.message}`),
+    finish(`${spawnFailure}: ${error.message}`),
   );
+
+  return {
+    cancel: () => {
+      if (settled) return;
+      cancelled = true;
+      child.kill();
+    },
+    done,
+  };
 }

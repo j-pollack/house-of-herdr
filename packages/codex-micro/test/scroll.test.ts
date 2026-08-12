@@ -1,5 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { HerdrScroller } from "../src/scroll.js";
+import type { ScrollOperation } from "../src/tapkey.js";
+
+function completedOperation(): ScrollOperation {
+  return { cancel: vi.fn(), done: Promise.resolve() };
+}
+
+function deferredOperation(): ScrollOperation & { finish(): void } {
+  let finish!: () => void;
+  return {
+    cancel: vi.fn(),
+    done: new Promise<void>((resolve) => (finish = resolve)),
+    finish,
+  };
+}
 
 function snapshot(agent = "claude") {
   return {
@@ -46,7 +60,7 @@ describe("HerdrScroller", () => {
         sessionSnapshot: vi.fn(async () => snapshot()),
         request: vi.fn(async () => ({})),
       };
-      const postHostScroll = vi.fn();
+      const postHostScroll = vi.fn(completedOperation);
       const postFallbackScroll = vi.fn();
       const log = vi.fn();
       const scroller = new HerdrScroller(
@@ -81,7 +95,7 @@ describe("HerdrScroller", () => {
         sessionSnapshot: vi.fn(async () => snapshot("")),
         request: vi.fn(async () => ({})),
       };
-      const postHostScroll = vi.fn();
+      const postHostScroll = vi.fn(completedOperation);
       const scroller = new HerdrScroller(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         herdr as any,
@@ -111,19 +125,61 @@ describe("HerdrScroller", () => {
       sessionSnapshot: vi.fn(async () => ({ ...snapshot(), layouts: [] })),
       request: vi.fn(async () => ({})),
     };
-    const postFallbackScroll = vi.fn();
+    const postFallbackScroll = vi.fn(completedOperation);
     const log = vi.fn();
     const scroller = new HerdrScroller(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       herdr as any,
       log,
       () => 2,
-      vi.fn(),
+      vi.fn(completedOperation),
       postFallbackScroll,
     );
 
     await scroller.scroll("down");
 
     expect(postFallbackScroll).toHaveBeenCalledWith(-2, log);
+  });
+
+  it("cancels active and buffered ticks before reversing immediately", async () => {
+    const previousTermProgram = process.env.TERM_PROGRAM;
+    process.env.TERM_PROGRAM = "ghostty";
+    const active = deferredOperation();
+    try {
+      const herdr = {
+        sessionSnapshot: vi.fn(async () => snapshot()),
+        request: vi.fn(async () => ({})),
+      };
+      const postHostScroll = vi
+        .fn()
+        .mockImplementationOnce(() => active)
+        .mockImplementationOnce(completedOperation);
+      const scroller = new HerdrScroller(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        herdr as any,
+        vi.fn(),
+        () => 2,
+        postHostScroll,
+      );
+
+      const first = scroller.scroll("up");
+      await vi.waitFor(() => expect(postHostScroll).toHaveBeenCalledTimes(1));
+      const buffered = scroller.scroll("up");
+      const reversed = scroller.scroll("down");
+
+      await reversed;
+      expect(active.cancel).toHaveBeenCalledTimes(1);
+      expect(postHostScroll.mock.calls.map(([lines]) => lines)).toEqual([
+        2, -2,
+      ]);
+      expect(herdr.sessionSnapshot).toHaveBeenCalledTimes(2);
+
+      active.finish();
+      await Promise.all([first, buffered]);
+    } finally {
+      active.finish();
+      if (previousTermProgram === undefined) delete process.env.TERM_PROGRAM;
+      else process.env.TERM_PROGRAM = previousTermProgram;
+    }
   });
 });

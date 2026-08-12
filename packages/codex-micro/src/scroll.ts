@@ -2,7 +2,11 @@
 // pane. Outside the terminal, the native helper falls back to the pointer so
 // scroll mode keeps behaving like an ordinary system wheel.
 import type { HerdrClient, SessionSnapshot } from "./herdr.js";
-import { postScroll, postSystemScroll } from "./tapkey.js";
+import {
+  postScroll,
+  postSystemScroll,
+  type ScrollOperation,
+} from "./tapkey.js";
 
 export type ScrollDirection = "up" | "down";
 
@@ -60,6 +64,8 @@ function focusedTarget(snapshot: SessionSnapshot): PaneTarget | null {
 export class HerdrScroller implements ScrollController {
   private generation = 0;
   private queue: Promise<void> = Promise.resolve();
+  private direction: ScrollDirection | null = null;
+  private active = new Set<ScrollOperation>();
 
   constructor(
     private herdr: HerdrClient,
@@ -70,6 +76,10 @@ export class HerdrScroller implements ScrollController {
   ) {}
 
   scroll(direction: ScrollDirection): Promise<void> {
+    if (this.direction !== null && direction !== this.direction) {
+      this.cancelBufferedScroll();
+    }
+    this.direction = direction;
     const generation = this.generation;
     const run = this.queue
       .catch(() => {})
@@ -79,8 +89,9 @@ export class HerdrScroller implements ScrollController {
         if (generation !== this.generation) return;
         const lines = (direction === "up" ? 1 : -1) * this.stepsPerTick();
         const owner = terminalWindowOwner();
+        let operation: ScrollOperation;
         if (target && owner) {
-          this.postHostScroll(
+          operation = this.postHostScroll(
             lines,
             target.windowX,
             target.windowY,
@@ -88,7 +99,17 @@ export class HerdrScroller implements ScrollController {
             this.log,
           );
         } else {
-          this.postFallbackScroll(lines, this.log);
+          operation = this.postFallbackScroll(lines, this.log);
+        }
+        if (generation !== this.generation) {
+          operation.cancel();
+          return;
+        }
+        this.active.add(operation);
+        try {
+          await operation.done;
+        } finally {
+          this.active.delete(operation);
         }
       });
     this.queue = run.catch((error: Error) => {
@@ -100,6 +121,14 @@ export class HerdrScroller implements ScrollController {
   // Invalidates a snapshot lookup already in flight when the user leaves
   // scroll mode or the device disconnects.
   stop(): void {
+    this.cancelBufferedScroll();
+    this.direction = null;
+  }
+
+  private cancelBufferedScroll(): void {
     this.generation += 1;
+    this.queue = Promise.resolve();
+    for (const operation of this.active) operation.cancel();
+    this.active.clear();
   }
 }
