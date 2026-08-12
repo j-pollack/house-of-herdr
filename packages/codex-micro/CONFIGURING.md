@@ -108,9 +108,10 @@ directions keep pane navigation.
    using its last cursor position. In other apps it scrolls beneath the pointer
    like a normal macOS wheel. It uses `scroll_steps` wheel steps per dial detent
    (counter-clockwise up, clockwise down) and requires Accessibility. When the
-   direction is reversed, any scroll ticks still buffered in the previous
-   direction are cancelled before the new direction starts. If no binding maps
-   to `dial-mode`, the mode collapses back to workspaces (the ring cannot get
+   direction is reversed while scroll work is still buffered, the first reverse
+   detent acts as a brake: it cancels the previous direction and ignores new
+   ticks for 120 ms before allowing the new direction. If no binding maps to
+   `dial-mode`, the mode collapses back to workspaces (the ring cannot get
    stuck). The `dial-mode` toast additionally
    requires toast delivery enabled in Herdr, which is off by default: set
    `[ui.toast] delivery = "herdr"` in the Herdr config. The current mode is

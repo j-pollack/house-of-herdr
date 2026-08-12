@@ -76,8 +76,9 @@ of its initial pointer position; Ghostty requires moving the pointer to that
 pane before it will route the wheel gesture there. In other apps it scrolls
 beneath the pointer like a normal wheel. Set `scroll_steps` from 1 to 12 in the
 plugin config to tune how much each detent moves; changes apply live. See
-[CONFIGURING.md](CONFIGURING.md) for details. Reversing the dial cancels any
-scroll ticks still buffered in the previous direction before scrolling back.
+[CONFIGURING.md](CONFIGURING.md) for details. With scroll work still buffered,
+the first reverse detent acts as a brake: it cancels the old direction and
+briefly ignores new ticks before scrolling back.
 
 Bindings come in two flavors. **Herdr-side** bindings (the presets plus
 `herdr-key` / `herdr-text`) go through Herdr's API to the focused pane and

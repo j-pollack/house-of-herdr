@@ -10,6 +10,8 @@ import {
 
 export type ScrollDirection = "up" | "down";
 
+const REVERSAL_BRAKE_MS = 120;
+
 export interface ScrollController {
   scroll(direction: ScrollDirection): Promise<void> | void;
   stop(): void;
@@ -66,6 +68,8 @@ export class HerdrScroller implements ScrollController {
   private queue: Promise<void> = Promise.resolve();
   private direction: ScrollDirection | null = null;
   private active = new Set<ScrollOperation>();
+  private pending = new Set<object>();
+  private brakeUntil = 0;
 
   constructor(
     private herdr: HerdrClient,
@@ -73,13 +77,27 @@ export class HerdrScroller implements ScrollController {
     private stepsPerTick: () => number = () => 1,
     private postHostScroll: PostHostScroll = postScroll,
     private postFallbackScroll: PostFallbackScroll = postSystemScroll,
+    private now: () => number = Date.now,
   ) {}
 
   scroll(direction: ScrollDirection): Promise<void> {
-    if (this.direction !== null && direction !== this.direction) {
+    const now = this.now();
+    if (now < this.brakeUntil) return Promise.resolve();
+    this.brakeUntil = 0;
+
+    if (
+      this.direction !== null &&
+      direction !== this.direction &&
+      this.pending.size > 0
+    ) {
       this.cancelBufferedScroll();
+      this.direction = direction;
+      this.brakeUntil = now + REVERSAL_BRAKE_MS;
+      return Promise.resolve();
     }
     this.direction = direction;
+    const tick = {};
+    this.pending.add(tick);
     const generation = this.generation;
     const run = this.queue
       .catch(() => {})
@@ -112,9 +130,11 @@ export class HerdrScroller implements ScrollController {
           this.active.delete(operation);
         }
       });
-    this.queue = run.catch((error: Error) => {
-      this.log(`focus-aware scroll failed: ${error.message}`);
-    });
+    this.queue = run
+      .catch((error: Error) => {
+        this.log(`focus-aware scroll failed: ${error.message}`);
+      })
+      .finally(() => this.pending.delete(tick));
     return this.queue;
   }
 
@@ -123,6 +143,7 @@ export class HerdrScroller implements ScrollController {
   stop(): void {
     this.cancelBufferedScroll();
     this.direction = null;
+    this.brakeUntil = 0;
   }
 
   private cancelBufferedScroll(): void {
@@ -130,5 +151,6 @@ export class HerdrScroller implements ScrollController {
     this.queue = Promise.resolve();
     for (const operation of this.active) operation.cancel();
     this.active.clear();
+    this.pending.clear();
   }
 }

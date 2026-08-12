@@ -141,10 +141,11 @@ describe("HerdrScroller", () => {
     expect(postFallbackScroll).toHaveBeenCalledWith(-2, log);
   });
 
-  it("cancels active and buffered ticks before reversing immediately", async () => {
+  it("uses a backlogged reversal as a brake before scrolling back", async () => {
     const previousTermProgram = process.env.TERM_PROGRAM;
     process.env.TERM_PROGRAM = "ghostty";
     const active = deferredOperation();
+    let now = 1000;
     try {
       const herdr = {
         sessionSnapshot: vi.fn(async () => snapshot()),
@@ -160,15 +161,24 @@ describe("HerdrScroller", () => {
         vi.fn(),
         () => 2,
         postHostScroll,
+        vi.fn(completedOperation),
+        () => now,
       );
 
       const first = scroller.scroll("up");
       await vi.waitFor(() => expect(postHostScroll).toHaveBeenCalledTimes(1));
       const buffered = scroller.scroll("up");
-      const reversed = scroller.scroll("down");
+      await scroller.scroll("down");
 
-      await reversed;
       expect(active.cancel).toHaveBeenCalledTimes(1);
+      expect(postHostScroll.mock.calls.map(([lines]) => lines)).toEqual([2]);
+
+      now = 1119;
+      await scroller.scroll("down");
+      expect(postHostScroll).toHaveBeenCalledTimes(1);
+
+      now = 1120;
+      await scroller.scroll("down");
       expect(postHostScroll.mock.calls.map(([lines]) => lines)).toEqual([
         2, -2,
       ]);
