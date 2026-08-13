@@ -9,6 +9,7 @@
 // Accessibility to post.
 #include <ApplicationServices/ApplicationServices.h>
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,8 +67,9 @@ static bool parse_fraction(const char *text, double *out) {
   char *end = NULL;
   errno = 0;
   double value = strtod(text, &end);
-  if (errno != 0 || end == text || *end != '\0' || value < 0.0 ||
-      value > 1.0) {
+  // NaN slips through plain range comparisons, so demand a finite value.
+  if (errno != 0 || end == text || *end != '\0' || !isfinite(value) ||
+      value < 0.0 || value > 1.0) {
     return false;
   }
   *out = value;
