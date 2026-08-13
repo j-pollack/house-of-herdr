@@ -103,7 +103,14 @@ export class HerdrScroller implements ScrollController {
       .catch(() => {})
       .then(async () => {
         if (generation !== this.generation) return;
-        const target = focusedTarget(await this.herdr.sessionSnapshot());
+        let target: PaneTarget | null = null;
+        try {
+          target = focusedTarget(await this.herdr.sessionSnapshot());
+        } catch (error) {
+          // Losing Herdr must not take plain wheel behavior down with it:
+          // without a snapshot, scroll beneath the pointer like a real wheel.
+          this.log(`focus-aware scroll failed: ${(error as Error).message}`);
+        }
         if (generation !== this.generation) return;
         const lines = (direction === "up" ? 1 : -1) * this.stepsPerTick();
         const owner = terminalWindowOwner();

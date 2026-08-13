@@ -141,6 +141,34 @@ describe("HerdrScroller", () => {
     expect(postFallbackScroll).toHaveBeenCalledWith(-2, log);
   });
 
+  it("falls back to system scrolling when the snapshot lookup fails", async () => {
+    const herdr = {
+      sessionSnapshot: vi.fn(async () => {
+        throw new Error("socket closed");
+      }),
+      request: vi.fn(async () => ({})),
+    };
+    const postHostScroll = vi.fn(completedOperation);
+    const postFallbackScroll = vi.fn(completedOperation);
+    const log = vi.fn();
+    const scroller = new HerdrScroller(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      herdr as any,
+      log,
+      () => 2,
+      postHostScroll,
+      postFallbackScroll,
+    );
+
+    await scroller.scroll("down");
+
+    expect(postHostScroll).not.toHaveBeenCalled();
+    expect(postFallbackScroll).toHaveBeenCalledWith(-2, log);
+    expect(log).toHaveBeenCalledWith(
+      "focus-aware scroll failed: socket closed",
+    );
+  });
+
   it("uses a backlogged reversal as a brake before scrolling back", async () => {
     const previousTermProgram = process.env.TERM_PROGRAM;
     process.env.TERM_PROGRAM = "ghostty";
