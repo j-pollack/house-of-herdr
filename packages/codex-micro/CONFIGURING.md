@@ -87,18 +87,18 @@ directions keep pane navigation.
 
 1. **Preset** (string): a built-in Herdr behavior.
 
-   | Preset                                 | Effect                                                        |
-   | -------------------------------------- | ------------------------------------------------------------- |
-   | `popup`                                | toggle the key-map popup                                      |
-   | `tab-next` / `tab-prev`                | cycle tabs in the focused workspace                           |
-   | `tab-new`                              | create a tab in the focused workspace                         |
-   | `workspace-next` / `workspace-prev`    | cycle workspaces                                              |
-   | `zoom`                                 | toggle zoom on the focused pane                               |
-   | `pane-split-right` / `pane-split-down` | split the focused pane                                        |
-   | `agent-next` / `agent-prev`            | cycle agents in priority order                                |
-   | `toggle-policy`                        | flip sticky/mirror                                            |
-   | `dial-next` / `dial-prev`              | mode-dependent cycling or harness scrolling (see `dial-mode`) |
-   | `dial-mode`                            | cycle through `dial_mode_order`; shows a toast                |
+   | Preset                                 | Effect                                                      |
+   | -------------------------------------- | ----------------------------------------------------------- |
+   | `popup`                                | toggle the key-map popup                                    |
+   | `tab-next` / `tab-prev`                | cycle tabs in the focused workspace                         |
+   | `tab-new`                              | create a tab in the focused workspace                       |
+   | `workspace-next` / `workspace-prev`    | cycle workspaces                                            |
+   | `zoom`                                 | toggle zoom on the focused pane                             |
+   | `pane-split-right` / `pane-split-down` | split the focused pane                                      |
+   | `agent-next` / `agent-prev`            | cycle agents in priority order                              |
+   | `toggle-policy`                        | flip sticky/mirror                                          |
+   | `dial-next` / `dial-prev`              | mode-dependent cycling or wheel scrolling (see `dial-mode`) |
+   | `dial-mode`                            | cycle through `dial_mode_order`; shows a toast              |
 
    The dial starts with the first entry in `dial_mode_order` (workspace mode
    by default). Its ambient ring is off in workspace mode, blue in agent mode,
@@ -106,7 +106,9 @@ directions keep pane navigation.
    scroll mode targets Herdr's keyboard-focused pane regardless of pointer
    position, moving the pointer there first because Ghostty routes wheel input
    using its last cursor position. In other apps it scrolls beneath the pointer
-   like a normal macOS wheel. It uses `scroll_steps` wheel steps per dial detent
+   like a normal macOS wheel. Scrolling Herdr panes relies on Herdr's mouse
+   capture (`[ui] mouse_capture`, on by default); with it disabled, wheel
+   events cannot reach Herdr's panes. It uses `scroll_steps` wheel steps per dial detent
    (counter-clockwise up, clockwise down) and requires Accessibility. When the
    direction is reversed while scroll work is still buffered, the first reverse
    detent acts as a brake: it cancels the previous direction and ignores new

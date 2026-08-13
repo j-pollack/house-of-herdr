@@ -54,7 +54,7 @@ after an automatic start, launch it once from your terminal
 | -------------- | --------------------------------------------------------- |
 | Agent Keys 1-6 | Focus the assigned Herdr agent (marks done agents seen)   |
 | Joystick       | Move pane focus; circle the stick to keep moving          |
-| Dial rotate    | Cycle workspaces, or agents in agent mode                 |
+| Dial rotate    | Cycle workspaces or agents; scroll in scroll mode         |
 | Dial click     | Cycle through the configured dial modes                   |
 | ACT06          | Toggle the key-map popup                                  |
 | ACT07          | Send Escape to Herdr's focused pane (interrupt the agent) |
