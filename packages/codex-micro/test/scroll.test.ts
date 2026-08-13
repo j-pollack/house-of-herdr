@@ -15,36 +15,16 @@ function deferredOperation(): ScrollOperation & { finish(): void } {
   };
 }
 
-function snapshot(agent = "claude") {
+function snapshot() {
   return {
     focused_pane_id: "wA:p1",
-    focused_tab_id: "wA:t1",
-    focused_workspace_id: "wA",
-    panes: [
-      {
-        pane_id: "wA:p1",
-        tab_id: "wA:t1",
-        agent,
-        scroll: {
-          max_offset_from_bottom: agent === "codex" ? 100 : 0,
-          offset_from_bottom: 0,
-          viewport_rows: 58,
-        },
-      },
-    ],
+    panes: [{ pane_id: "wA:p1", tab_id: "wA:t1" }],
     layouts: [
       {
-        workspace_id: "wA",
         tab_id: "wA:t1",
-        focused_pane_id: "wA:p1",
-        zoomed: false,
         area: { x: 26, y: 1, width: 189, height: 60 },
         panes: [
-          {
-            pane_id: "wA:p1",
-            focused: true,
-            rect: { x: 26, y: 1, width: 95, height: 60 },
-          },
+          { pane_id: "wA:p1", rect: { x: 26, y: 1, width: 95, height: 60 } },
         ],
       },
     ],
@@ -103,33 +83,6 @@ describe("HerdrScroller", () => {
         [-2, 73.5 / 215, 31 / 61, "Ghostty", log],
       ]);
       expect(postFallbackScroll).not.toHaveBeenCalled();
-      expect(herdr.request).not.toHaveBeenCalled();
-    }));
-
-  it("targets an ordinary focused Herdr shell pane too", () =>
-    inTerminalEnv({ TERM_PROGRAM: "ghostty" }, async () => {
-      const herdr = {
-        sessionSnapshot: vi.fn(async () => snapshot("")),
-        request: vi.fn(async () => ({})),
-      };
-      const postHostScroll = vi.fn(completedOperation);
-      const scroller = new HerdrScroller(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        herdr as any,
-        vi.fn(),
-        () => 1,
-        postHostScroll,
-      );
-
-      await scroller.scroll("up");
-
-      expect(postHostScroll).toHaveBeenCalledWith(
-        1,
-        73.5 / 215,
-        31 / 61,
-        "Ghostty",
-        expect.any(Function),
-      );
       expect(herdr.request).not.toHaveBeenCalled();
     }));
 
