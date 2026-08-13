@@ -51,11 +51,34 @@ function snapshot(agent = "claude") {
   };
 }
 
+const TERMINAL_ENV_KEYS = [
+  "TERM_PROGRAM",
+  "KITTY_WINDOW_ID",
+  "ALACRITTY_WINDOW_ID",
+] as const;
+
+async function inTerminalEnv(
+  env: Partial<Record<(typeof TERMINAL_ENV_KEYS)[number], string>>,
+  run: () => Promise<void>,
+): Promise<void> {
+  const saved = TERMINAL_ENV_KEYS.map(
+    (key) => [key, process.env[key]] as const,
+  );
+  try {
+    for (const key of TERMINAL_ENV_KEYS) delete process.env[key];
+    Object.assign(process.env, env);
+    await run();
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 describe("HerdrScroller", () => {
-  it("posts native wheel events over Herdr's focused pane", async () => {
-    const previousTermProgram = process.env.TERM_PROGRAM;
-    process.env.TERM_PROGRAM = "ghostty";
-    try {
+  it("posts native wheel events over Herdr's focused pane", () =>
+    inTerminalEnv({ TERM_PROGRAM: "ghostty" }, async () => {
       const herdr = {
         sessionSnapshot: vi.fn(async () => snapshot()),
         request: vi.fn(async () => ({})),
@@ -81,16 +104,10 @@ describe("HerdrScroller", () => {
       ]);
       expect(postFallbackScroll).not.toHaveBeenCalled();
       expect(herdr.request).not.toHaveBeenCalled();
-    } finally {
-      if (previousTermProgram === undefined) delete process.env.TERM_PROGRAM;
-      else process.env.TERM_PROGRAM = previousTermProgram;
-    }
-  });
+    }));
 
-  it("targets an ordinary focused Herdr shell pane too", async () => {
-    const previousTermProgram = process.env.TERM_PROGRAM;
-    process.env.TERM_PROGRAM = "ghostty";
-    try {
+  it("targets an ordinary focused Herdr shell pane too", () =>
+    inTerminalEnv({ TERM_PROGRAM: "ghostty" }, async () => {
       const herdr = {
         sessionSnapshot: vi.fn(async () => snapshot("")),
         request: vi.fn(async () => ({})),
@@ -114,11 +131,36 @@ describe("HerdrScroller", () => {
         expect.any(Function),
       );
       expect(herdr.request).not.toHaveBeenCalled();
-    } finally {
-      if (previousTermProgram === undefined) delete process.env.TERM_PROGRAM;
-      else process.env.TERM_PROGRAM = previousTermProgram;
-    }
-  });
+    }));
+
+  it("prefers the terminal's own env var over an inherited TERM_PROGRAM", () =>
+    inTerminalEnv(
+      { TERM_PROGRAM: "ghostty", KITTY_WINDOW_ID: "1" },
+      async () => {
+        const herdr = {
+          sessionSnapshot: vi.fn(async () => snapshot()),
+          request: vi.fn(async () => ({})),
+        };
+        const postHostScroll = vi.fn(completedOperation);
+        const scroller = new HerdrScroller(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          herdr as any,
+          vi.fn(),
+          () => 1,
+          postHostScroll,
+        );
+
+        await scroller.scroll("up");
+
+        expect(postHostScroll).toHaveBeenCalledWith(
+          1,
+          73.5 / 215,
+          31 / 61,
+          "kitty",
+          expect.any(Function),
+        );
+      },
+    ));
 
   it("falls back to system scrolling without pane geometry", async () => {
     const herdr = {
@@ -141,47 +183,44 @@ describe("HerdrScroller", () => {
     expect(postFallbackScroll).toHaveBeenCalledWith(-2, log);
   });
 
-  it("coalesces detents arriving while a scroll is in flight", async () => {
-    const previousTermProgram = process.env.TERM_PROGRAM;
-    process.env.TERM_PROGRAM = "ghostty";
-    const active = deferredOperation();
-    try {
-      const herdr = {
-        sessionSnapshot: vi.fn(async () => snapshot()),
-        request: vi.fn(async () => ({})),
-      };
-      const postHostScroll = vi
-        .fn()
-        .mockImplementationOnce(() => active)
-        .mockImplementationOnce(completedOperation);
-      let steps = 1;
-      const scroller = new HerdrScroller(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        herdr as any,
-        vi.fn(),
-        () => steps,
-        postHostScroll,
-        vi.fn(completedOperation),
-      );
+  it("coalesces detents arriving while a scroll is in flight", () =>
+    inTerminalEnv({ TERM_PROGRAM: "ghostty" }, async () => {
+      const active = deferredOperation();
+      try {
+        const herdr = {
+          sessionSnapshot: vi.fn(async () => snapshot()),
+          request: vi.fn(async () => ({})),
+        };
+        const postHostScroll = vi
+          .fn()
+          .mockImplementationOnce(() => active)
+          .mockImplementationOnce(completedOperation);
+        let steps = 1;
+        const scroller = new HerdrScroller(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          herdr as any,
+          vi.fn(),
+          () => steps,
+          postHostScroll,
+          vi.fn(completedOperation),
+        );
 
-      const done = scroller.scroll("down");
-      await vi.waitFor(() => expect(postHostScroll).toHaveBeenCalledTimes(1));
-      void scroller.scroll("down");
-      steps = 3; // a live scroll_steps reload must not rescale the first detent
-      void scroller.scroll("down");
-      active.finish();
-      await done;
+        const done = scroller.scroll("down");
+        await vi.waitFor(() => expect(postHostScroll).toHaveBeenCalledTimes(1));
+        void scroller.scroll("down");
+        steps = 3; // a live scroll_steps reload must not rescale the first detent
+        void scroller.scroll("down");
+        active.finish();
+        await done;
 
-      expect(postHostScroll.mock.calls.map(([lines]) => lines)).toEqual([
-        -1, -4,
-      ]);
-      expect(herdr.sessionSnapshot).toHaveBeenCalledTimes(2);
-    } finally {
-      active.finish();
-      if (previousTermProgram === undefined) delete process.env.TERM_PROGRAM;
-      else process.env.TERM_PROGRAM = previousTermProgram;
-    }
-  });
+        expect(postHostScroll.mock.calls.map(([lines]) => lines)).toEqual([
+          -1, -4,
+        ]);
+        expect(herdr.sessionSnapshot).toHaveBeenCalledTimes(2);
+      } finally {
+        active.finish();
+      }
+    }));
 
   it("falls back to system scrolling when the snapshot lookup fails", async () => {
     const herdr = {
@@ -211,55 +250,52 @@ describe("HerdrScroller", () => {
     );
   });
 
-  it("uses a backlogged reversal as a brake before scrolling back", async () => {
-    const previousTermProgram = process.env.TERM_PROGRAM;
-    process.env.TERM_PROGRAM = "ghostty";
-    const active = deferredOperation();
-    let now = 1000;
-    try {
-      const herdr = {
-        sessionSnapshot: vi.fn(async () => snapshot()),
-        request: vi.fn(async () => ({})),
-      };
-      const postHostScroll = vi
-        .fn()
-        .mockImplementationOnce(() => active)
-        .mockImplementationOnce(completedOperation);
-      const scroller = new HerdrScroller(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        herdr as any,
-        vi.fn(),
-        () => 2,
-        postHostScroll,
-        vi.fn(completedOperation),
-        () => now,
-      );
+  it("uses a backlogged reversal as a brake before scrolling back", () =>
+    inTerminalEnv({ TERM_PROGRAM: "ghostty" }, async () => {
+      const active = deferredOperation();
+      let now = 1000;
+      try {
+        const herdr = {
+          sessionSnapshot: vi.fn(async () => snapshot()),
+          request: vi.fn(async () => ({})),
+        };
+        const postHostScroll = vi
+          .fn()
+          .mockImplementationOnce(() => active)
+          .mockImplementationOnce(completedOperation);
+        const scroller = new HerdrScroller(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          herdr as any,
+          vi.fn(),
+          () => 2,
+          postHostScroll,
+          vi.fn(completedOperation),
+          () => now,
+        );
 
-      const first = scroller.scroll("up");
-      await vi.waitFor(() => expect(postHostScroll).toHaveBeenCalledTimes(1));
-      const buffered = scroller.scroll("up");
-      await scroller.scroll("down");
+        const first = scroller.scroll("up");
+        await vi.waitFor(() => expect(postHostScroll).toHaveBeenCalledTimes(1));
+        const buffered = scroller.scroll("up");
+        await scroller.scroll("down");
 
-      expect(active.cancel).toHaveBeenCalledTimes(1);
-      expect(postHostScroll.mock.calls.map(([lines]) => lines)).toEqual([2]);
+        expect(active.cancel).toHaveBeenCalledTimes(1);
+        expect(postHostScroll.mock.calls.map(([lines]) => lines)).toEqual([2]);
 
-      now = 1119;
-      await scroller.scroll("down");
-      expect(postHostScroll).toHaveBeenCalledTimes(1);
+        now = 1119;
+        await scroller.scroll("down");
+        expect(postHostScroll).toHaveBeenCalledTimes(1);
 
-      now = 1120;
-      await scroller.scroll("down");
-      expect(postHostScroll.mock.calls.map(([lines]) => lines)).toEqual([
-        2, -2,
-      ]);
-      expect(herdr.sessionSnapshot).toHaveBeenCalledTimes(2);
+        now = 1120;
+        await scroller.scroll("down");
+        expect(postHostScroll.mock.calls.map(([lines]) => lines)).toEqual([
+          2, -2,
+        ]);
+        expect(herdr.sessionSnapshot).toHaveBeenCalledTimes(2);
 
-      active.finish();
-      await Promise.all([first, buffered]);
-    } finally {
-      active.finish();
-      if (previousTermProgram === undefined) delete process.env.TERM_PROGRAM;
-      else process.env.TERM_PROGRAM = previousTermProgram;
-    }
-  });
+        active.finish();
+        await Promise.all([first, buffered]);
+      } finally {
+        active.finish();
+      }
+    }));
 });

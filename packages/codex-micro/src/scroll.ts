@@ -32,11 +32,13 @@ const WINDOW_OWNERS: Record<string, string> = {
   "iterm.app": "iTerm2",
   apple_terminal: "Terminal",
   wezterm: "WezTerm",
-  kitty: "kitty",
-  alacritty: "Alacritty",
 };
 
 function terminalWindowOwner(): string | null {
+  // kitty and Alacritty never set TERM_PROGRAM and pass an inherited value
+  // through untouched, so their own variables must win over a stale one.
+  if (process.env.KITTY_WINDOW_ID) return "kitty";
+  if (process.env.ALACRITTY_WINDOW_ID) return "Alacritty";
   return WINDOW_OWNERS[(process.env.TERM_PROGRAM ?? "").toLowerCase()] ?? null;
 }
 
