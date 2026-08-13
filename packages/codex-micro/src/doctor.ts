@@ -116,3 +116,24 @@ check(
     ? "granted (used for global key bindings and scrolling)"
     : "not granted; needed for global key bindings and scrolling (System Settings → Privacy & Security → Accessibility)",
 );
+
+// Does the committed helper actually speak the scroll grammar? A binary that
+// predates scroll mode still passes the accessibility check above, so probe
+// with an invalid line count: it is rejected before any event is posted, and
+// only a scroll-capable helper answers with the scroll usage text.
+const scrollSupported = await new Promise<boolean>((resolve) => {
+  const child = spawn(tapkey, ["scroll", "0"], {
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let stderr = "";
+  child.stderr!.on("data", (data: Buffer) => (stderr += data.toString("utf8")));
+  child.on("close", () => resolve(stderr.includes("scroll <nonzero-lines>")));
+  child.on("error", () => resolve(false));
+});
+check(
+  "tapkey scroll",
+  scrollSupported,
+  scrollSupported
+    ? "helper supports wheel scrolling"
+    : "helper predates scroll mode; rebuild with `npm run build:tapkey` or update the plugin",
+);
