@@ -10,6 +10,8 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <errno.h>
 #include <math.h>
+#include <objc/message.h>
+#include <objc/runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,11 +78,29 @@ static bool parse_fraction(const char *text, double *out) {
   return true;
 }
 
+// The application holding user focus, via NSWorkspace through the Objective-C
+// runtime (tapkey stays a C file). Window z-order is not focus: background
+// utilities (Dell's DDPM, overlays) keep permanent layer-0 windows at the top
+// of the on-screen list. NSWorkspace needs no permission, unlike the
+// accessibility system-wide focus query, which fails with cannotComplete in
+// some launch contexts even for a trusted process.
+static pid_t focused_app_pid(void) {
+  typedef id (*msg_id)(id, SEL);
+  typedef int (*msg_int)(id, SEL);
+  id workspace = ((msg_id)objc_msgSend)((id)objc_getClass("NSWorkspace"),
+                                        sel_registerName("sharedWorkspace"));
+  if (workspace == NULL) return 0;
+  id app = ((msg_id)objc_msgSend)(workspace,
+                                  sel_registerName("frontmostApplication"));
+  if (app == NULL) return 0;
+  return (pid_t)((msg_int)objc_msgSend)(app,
+                                        sel_registerName("processIdentifier"));
+}
+
 // Find the frontmost on-screen, normal-layer window owned by the requested
-// terminal app. CGWindowList is front-to-back, so the first normal window's
-// PID also tells us whether that terminal is the active application.
-static bool find_window(const char *owner, pid_t *pid, pid_t *front_pid,
-                        CGRect *bounds) {
+// terminal app. CGWindowList is front-to-back, so the first match is the
+// terminal's key window when the terminal is the focused application.
+static bool find_window(const char *owner, pid_t *pid, CGRect *bounds) {
   CFStringRef wanted = CFStringCreateWithCString(
       kCFAllocatorDefault, owner, kCFStringEncodingUTF8);
   if (wanted == NULL) return false;
@@ -112,8 +132,6 @@ static bool find_window(const char *owner, pid_t *pid, pid_t *front_pid,
         owner_pid <= 0) {
       continue;
     }
-    if (*front_pid == 0) *front_pid = (pid_t)owner_pid;
-
     CFStringRef actual =
         (CFStringRef)CFDictionaryGetValue(window, kCGWindowOwnerName);
     if (actual == NULL ||
@@ -159,10 +177,9 @@ static bool emit_scroll(int32_t lines, CGPoint location) {
 static bool post_scroll(int32_t lines, double x_fraction, double y_fraction,
                         const char *owner) {
   pid_t pid = 0;
-  pid_t front_pid = 0;
   CGRect bounds = CGRectZero;
-  const bool found_window = find_window(owner, &pid, &front_pid, &bounds);
-  const bool owner_is_front = found_window && front_pid == pid;
+  const bool found_window = find_window(owner, &pid, &bounds);
+  const bool owner_is_front = found_window && focused_app_pid() == pid;
 
   CGPoint location = CGPointZero;
   if (owner_is_front) {
