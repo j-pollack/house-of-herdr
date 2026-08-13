@@ -11,6 +11,8 @@ import {
 export type ScrollDirection = "up" | "down";
 
 const REVERSAL_BRAKE_MS = 120;
+// The native helper rejects batches beyond this many lines per invocation.
+const MAX_LINES_PER_CALL = 120;
 
 export interface ScrollController {
   scroll(direction: ScrollDirection): Promise<void> | void;
@@ -65,10 +67,13 @@ function focusedTarget(snapshot: SessionSnapshot): PaneTarget | null {
 
 export class HerdrScroller implements ScrollController {
   private generation = 0;
-  private queue: Promise<void> = Promise.resolve();
+  // Signed wheel lines awaiting delivery. Detents arriving while a helper is
+  // in flight fold in here and drain as one batch, so a fast spin buffers at
+  // most one helper call of latency instead of a process per detent.
+  private buffered = 0;
+  private drain: Promise<void> | null = null;
+  private operation: ScrollOperation | null = null;
   private direction: ScrollDirection | null = null;
-  private active = new Set<ScrollOperation>();
-  private pending = new Set<object>();
   private brakeUntil = 0;
 
   constructor(
@@ -77,7 +82,7 @@ export class HerdrScroller implements ScrollController {
     private stepsPerTick: () => number = () => 1,
     private postHostScroll: PostHostScroll = postScroll,
     private postFallbackScroll: PostFallbackScroll = postSystemScroll,
-    private now: () => number = Date.now,
+    private now: () => number = () => performance.now(),
   ) {}
 
   scroll(direction: ScrollDirection): Promise<void> {
@@ -88,7 +93,7 @@ export class HerdrScroller implements ScrollController {
     if (
       this.direction !== null &&
       direction !== this.direction &&
-      this.pending.size > 0
+      (this.buffered !== 0 || this.drain !== null)
     ) {
       this.cancelBufferedScroll();
       this.direction = direction;
@@ -96,53 +101,10 @@ export class HerdrScroller implements ScrollController {
       return Promise.resolve();
     }
     this.direction = direction;
-    const tick = {};
-    this.pending.add(tick);
-    const generation = this.generation;
-    const run = this.queue
-      .catch(() => {})
-      .then(async () => {
-        if (generation !== this.generation) return;
-        let target: PaneTarget | null = null;
-        try {
-          target = focusedTarget(await this.herdr.sessionSnapshot());
-        } catch (error) {
-          // Losing Herdr must not take plain wheel behavior down with it:
-          // without a snapshot, scroll beneath the pointer like a real wheel.
-          this.log(`focus-aware scroll failed: ${(error as Error).message}`);
-        }
-        if (generation !== this.generation) return;
-        const lines = (direction === "up" ? 1 : -1) * this.stepsPerTick();
-        const owner = terminalWindowOwner();
-        let operation: ScrollOperation;
-        if (target && owner) {
-          operation = this.postHostScroll(
-            lines,
-            target.windowX,
-            target.windowY,
-            owner,
-            this.log,
-          );
-        } else {
-          operation = this.postFallbackScroll(lines, this.log);
-        }
-        if (generation !== this.generation) {
-          operation.cancel();
-          return;
-        }
-        this.active.add(operation);
-        try {
-          await operation.done;
-        } finally {
-          this.active.delete(operation);
-        }
-      });
-    this.queue = run
-      .catch((error: Error) => {
-        this.log(`focus-aware scroll failed: ${error.message}`);
-      })
-      .finally(() => this.pending.delete(tick));
-    return this.queue;
+    // Captured per detent, so a live scroll_steps reload cannot retroactively
+    // change work the user already dialed in.
+    this.buffered += (direction === "up" ? 1 : -1) * this.stepsPerTick();
+    return this.ensureDrain();
   }
 
   // Invalidates a snapshot lookup already in flight when the user leaves
@@ -153,11 +115,60 @@ export class HerdrScroller implements ScrollController {
     this.brakeUntil = 0;
   }
 
+  private ensureDrain(): Promise<void> {
+    if (this.drain === null) {
+      const drain: Promise<void> = this.runDrain()
+        .catch((error: Error) => this.log(`scroll failed: ${error.message}`))
+        .finally(() => {
+          if (this.drain === drain) this.drain = null;
+        });
+      this.drain = drain;
+    }
+    return this.drain;
+  }
+
+  private async runDrain(): Promise<void> {
+    const generation = this.generation;
+    while (generation === this.generation && this.buffered !== 0) {
+      const lines = Math.max(
+        -MAX_LINES_PER_CALL,
+        Math.min(MAX_LINES_PER_CALL, this.buffered),
+      );
+      this.buffered -= lines;
+      let target: PaneTarget | null = null;
+      try {
+        target = focusedTarget(await this.herdr.sessionSnapshot());
+      } catch (error) {
+        // Losing Herdr must not take plain wheel behavior down with it:
+        // without a snapshot, scroll beneath the pointer like a real wheel.
+        this.log(`focus-aware scroll failed: ${(error as Error).message}`);
+      }
+      if (generation !== this.generation) return;
+      const owner = terminalWindowOwner();
+      const operation =
+        target && owner
+          ? this.postHostScroll(
+              lines,
+              target.windowX,
+              target.windowY,
+              owner,
+              this.log,
+            )
+          : this.postFallbackScroll(lines, this.log);
+      this.operation = operation;
+      try {
+        await operation.done;
+      } finally {
+        if (this.operation === operation) this.operation = null;
+      }
+    }
+  }
+
   private cancelBufferedScroll(): void {
     this.generation += 1;
-    this.queue = Promise.resolve();
-    for (const operation of this.active) operation.cancel();
-    this.active.clear();
-    this.pending.clear();
+    this.buffered = 0;
+    this.drain = null;
+    this.operation?.cancel();
+    this.operation = null;
   }
 }

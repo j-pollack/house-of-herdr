@@ -141,6 +141,48 @@ describe("HerdrScroller", () => {
     expect(postFallbackScroll).toHaveBeenCalledWith(-2, log);
   });
 
+  it("coalesces detents arriving while a scroll is in flight", async () => {
+    const previousTermProgram = process.env.TERM_PROGRAM;
+    process.env.TERM_PROGRAM = "ghostty";
+    const active = deferredOperation();
+    try {
+      const herdr = {
+        sessionSnapshot: vi.fn(async () => snapshot()),
+        request: vi.fn(async () => ({})),
+      };
+      const postHostScroll = vi
+        .fn()
+        .mockImplementationOnce(() => active)
+        .mockImplementationOnce(completedOperation);
+      let steps = 1;
+      const scroller = new HerdrScroller(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        herdr as any,
+        vi.fn(),
+        () => steps,
+        postHostScroll,
+        vi.fn(completedOperation),
+      );
+
+      const done = scroller.scroll("down");
+      await vi.waitFor(() => expect(postHostScroll).toHaveBeenCalledTimes(1));
+      void scroller.scroll("down");
+      steps = 3; // a live scroll_steps reload must not rescale the first detent
+      void scroller.scroll("down");
+      active.finish();
+      await done;
+
+      expect(postHostScroll.mock.calls.map(([lines]) => lines)).toEqual([
+        -1, -4,
+      ]);
+      expect(herdr.sessionSnapshot).toHaveBeenCalledTimes(2);
+    } finally {
+      active.finish();
+      if (previousTermProgram === undefined) delete process.env.TERM_PROGRAM;
+      else process.env.TERM_PROGRAM = previousTermProgram;
+    }
+  });
+
   it("falls back to system scrolling when the snapshot lookup fails", async () => {
     const herdr = {
       sessionSnapshot: vi.fn(async () => {
