@@ -74,6 +74,13 @@ describe("loadConfig", () => {
     expect(() => loadConfig()).toThrow(/policy: expected "sticky" or "mirror"/);
   });
 
+  it("accepts the scroll step boundaries", () => {
+    for (const value of [1, 12]) {
+      write(JSON.stringify({ scroll_steps: value }));
+      expect(loadConfig().scrollSteps).toBe(value);
+    }
+  });
+
   it("rejects an invalid scroll step count", () => {
     for (const value of [0, 13, 1.5, "3"]) {
       write(JSON.stringify({ scroll_steps: value }));
